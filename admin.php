@@ -1,43 +1,108 @@
 <?php include "header.php"; ?>
 
 <?php 
-//Uji Jika tombol simpan diklik
-if (isset ($_POST['bsimpan'])) {
+// //Uji Jika tombol simpan diklik
+// if (isset ($_POST['bsimpan'])) {
+//     $tgl = date('Y-m-d');
+//     // Data dari form tidak disanitasi
+//     $nama = $_POST['nama'];
+//     $alamat = $_POST['alamat'];
+//     $tujuan = $_POST['tujuan'];
+//     $nope = $_POST['nope'];
+
+//     $simpan = mysqli_query($koneksi, "INSERT INTO ttamu (tanggal, nama, alamat, tujuan, nope) VALUES ('$tgl', '$nama', '$alamat', '$tujuan', '$nope')");
+
+//     if($simpan) {
+//         // Reflected XSS vulnerability pada alert
+//         echo "<script> alert('Data untuk " . $_POST['nama'] . " berhasil disimpan!'); document.location = '?' </script>";
+//     } else {
+//         echo "<script> alert('Simpan data GAGAL !!!'); document.location = '?' </script>";
+//     }
+// }
+
+
+if (isset($_POST['bsimpan'])) {
     $tgl = date('Y-m-d');
-    // Data dari form tidak disanitasi
-    $nama = $_POST['nama'];
-    $alamat = $_POST['alamat'];
-    $tujuan = $_POST['tujuan'];
-    $nope = $_POST['nope'];
 
-    $simpan = mysqli_query($koneksi, "INSERT INTO ttamu (tanggal, nama, alamat, tujuan, nope) VALUES ('$tgl', '$nama', '$alamat', '$tujuan', '$nope')");
+    // Mengambil data dari form
+    $nama = trim($_POST['nama']);
+    $alamat = trim($_POST['alamat']);
+    $tujuan = trim($_POST['tujuan']);
+    $nope = trim($_POST['nope']);
 
-    if($simpan) {
-        // Reflected XSS vulnerability pada alert
-        echo "<script> alert('Data untuk " . $_POST['nama'] . " berhasil disimpan!'); document.location = '?' </script>";
+    // Cek serangan XSS sebelum data diunggah ke database
+    $xss_detected = false;
+
+    if (preg_match("/<script.*?>.*?<\/script>/i", $nama) ||
+        preg_match("/<script.*?>.*?<\/script>/i", $alamat) ||
+        preg_match("/<script.*?>.*?<\/script>/i", $tujuan) ||
+        preg_match("/<script.*?>.*?<\/script>/i", $nope)) {
+        error_log("XSS Attack detected (Reflected XSS) with input: Nama: $nama, Alamat: $alamat, Tujuan: $tujuan, Nope: $nope\n", 3, "/var/log/xss_attack.log");
+        $xss_detected = true;
+    }
+    else if (preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $nama) || 
+            preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $alamat) || 
+            preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $tujuan) || 
+            preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $nope) ||
+            preg_match("/javascript:/i", $nama) || 
+            preg_match("/javascript:/i", $alamat) || 
+            preg_match("/javascript:/i", $tujuan) || 
+            preg_match("/javascript:/i", $nope)) {
+        error_log("Potential DOM XSS detected with input: Nama: $nama, Alamat: $alamat, Tujuan: $tujuan, Nope: $nope\n", 3, "/var/log/xss_attack.log");
+        $xss_detected = true;
+    }
+    else if (preg_match("/(<\s*img\s*[^>]*onerror\s*=\s*['\"]?[^>]+['\"]?)/i", $nama) ||
+            preg_match("/(<\s*img\s*[^>]*onerror\s*=\s*['\"]?[^>]+['\"]?)/i", $alamat) ||
+            preg_match("/(<\s*img\s*[^>]*onerror\s*=\s*['\"]?[^>]+['\"]?)/i", $tujuan) ||
+            preg_match("/(<\s*img\s*[^>]*onerror\s*=\s*['\"]?[^>]+['\"]?)/i", $nope) ||
+            preg_match("/<\s*iframe/i", $nama) ||
+            preg_match("/<\s*iframe/i", $alamat) ||
+            preg_match("/<\s*iframe/i", $tujuan) ||
+            preg_match("/<\s*iframe/i", $nope) ||
+            preg_match("/document\.cookie/i", $nama) ||
+            preg_match("/document\.cookie/i", $alamat) ||
+            preg_match("/document\.cookie/i", $tujuan) ||
+            preg_match("/document\.cookie/i", $nope) ||
+            preg_match("/alert\(/i", $nama) ||
+            preg_match("/alert\(/i", $alamat) ||
+            preg_match("/alert\(/i", $tujuan) ||
+            preg_match("/alert\(/i", $nope)) {
+        error_log("Advanced XSS Attack detected with input: Nama: $nama, Alamat: $alamat, Tujuan: $tujuan, Nope: $nope\n", 3, "/var/log/xss_attack.log");
+        $xss_detected = true;
+    }
+
+    // Jika serangan XSS terdeteksi, hentikan proses penyimpanan
+    if ($xss_detected) {
+        echo "<script> alert('Gagal menyimpan data: Input mencurigakan terdeteksi!'); document.location = '?' </script>";
     } else {
-        echo "<script> alert('Simpan data GAGAL !!!'); document.location = '?' </script>";
+        // Escape input untuk mencegah XSS
+        $safe_nama = htmlspecialchars($nama, ENT_QUOTES, 'UTF-8');
+        $safe_alamat = htmlspecialchars($alamat, ENT_QUOTES, 'UTF-8');
+        $safe_tujuan = htmlspecialchars($tujuan, ENT_QUOTES, 'UTF-8');
+        $safe_nope = htmlspecialchars($nope, ENT_QUOTES, 'UTF-8');
+
+        // Gunakan prepared statement untuk mencegah SQL Injection
+        $stmt = $koneksi->prepare("INSERT INTO ttamu (tanggal, nama, alamat, tujuan, nope) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssss", $tgl, $safe_nama, $safe_alamat, $safe_tujuan, $safe_nope);
+        $simpan = $stmt->execute();
+
+        if ($simpan) {
+            echo "<script> alert('Data untuk " . $safe_nama . " berhasil disimpan!'); document.location = '?' </script>";
+        } else {
+            echo "<script> alert('Simpan data GAGAL !!!'); document.location = '?' </script>";
+        }
     }
 }
+
 
 // Fungsi pencarian yang rentan terhadap Reflected XSS
 $search_results = [];
 if (isset($_GET['search'])) {
     $search_input = $_GET['search'];
-
-    // Cek kemungkinan serangan Reflected XSS
     if (preg_match("/<script.*?>.*?<\/script>/i", $search_input)) {
         // Log serangan XSS
-        error_log("XSS Attack detected (Reflected XSS) with input: " . $search_input, 3, "/var/log/xss_attack.log");
+        error_log("XSS Attack detected with input: " . $search_input, 3, "/var/log/xss_attack.log");
     }
-
-    // Cek pola yang mungkin berpotensi menjadi DOM-based XSS
-    // Contoh: mencatat jika ada event handler atau karakter yang sering digunakan dalam serangan DOM-based XSS
-    if (preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $search_input) || preg_match("/javascript:/i", $search_input)) {
-        // Log serangan XSS - DOM-based
-        error_log("Potential DOM XSS detected with input: " . $search_input, 3, "/var/log/xss_attack.log");
-    }
-
     $query = "SELECT * FROM ttamu WHERE nama LIKE '%$search_input%' OR alamat LIKE '%$search_input%' OR tujuan LIKE '%$search_input%'";
     $search_results = mysqli_query($koneksi, $query);
 }
