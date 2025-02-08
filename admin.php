@@ -22,9 +22,13 @@ if (isset ($_POST['bsimpan'])) {
 
 // Fungsi pencarian yang rentan terhadap Reflected XSS
 $search_results = [];
-if(isset($_GET['search'])) {
-    $search = $_GET['search']; // Tidak ada sanitasi untuk search term
-    $query = "SELECT * FROM ttamu WHERE nama LIKE '%$search%' OR alamat LIKE '%$search%' OR tujuan LIKE '%$search%'";
+if (isset($_GET['search'])) {
+    $search_input = $_GET['search'];
+    if (preg_match("/<script.*?>.*?<\/script>/i", $search_input)) {
+        // Log serangan XSS
+        error_log("XSS Attack detected with input: " . $search_input, 3, "/var/log/xss_attack.log");
+    }
+    $query = "SELECT * FROM ttamu WHERE nama LIKE '%$search_input%' OR alamat LIKE '%$search_input%' OR tujuan LIKE '%$search_input%'";
     $search_results = mysqli_query($koneksi, $query);
 }
 ?>
