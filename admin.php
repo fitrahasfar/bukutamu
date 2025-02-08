@@ -24,10 +24,20 @@ if (isset ($_POST['bsimpan'])) {
 $search_results = [];
 if (isset($_GET['search'])) {
     $search_input = $_GET['search'];
+
+    // Cek kemungkinan serangan Reflected XSS
     if (preg_match("/<script.*?>.*?<\/script>/i", $search_input)) {
         // Log serangan XSS
-        error_log("XSS Attack detected with input: " . $search_input, 3, "/var/log/xss_attack.log");
+        error_log("XSS Attack detected (Reflected XSS) with input: " . $search_input, 3, "/var/log/xss_attack.log");
     }
+
+    // Cek pola yang mungkin berpotensi menjadi DOM-based XSS
+    // Contoh: mencatat jika ada event handler atau karakter yang sering digunakan dalam serangan DOM-based XSS
+    if (preg_match("/(on\w+\s*=\s*['\"].*?['\"])/i", $search_input) || preg_match("/javascript:/i", $search_input)) {
+        // Log serangan XSS - DOM-based
+        error_log("Potential DOM XSS detected with input: " . $search_input, 3, "/var/log/xss_attack.log");
+    }
+
     $query = "SELECT * FROM ttamu WHERE nama LIKE '%$search_input%' OR alamat LIKE '%$search_input%' OR tujuan LIKE '%$search_input%'";
     $search_results = mysqli_query($koneksi, $query);
 }
